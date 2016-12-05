@@ -1,0 +1,312 @@
+---
+title: "Impute Missing Data - simputation"
+output: html_notebook
+---
+<style>
+table, th, td {
+    border: 1px solid black;
+    text-align: center;
+    <!-- width: auto; -->
+}
+.caption {
+    text-align: center;
+}
+</style>
+<!-- This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.  -->
+
+<!-- Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*.  -->
+
+<!-- ```{r} -->
+<!-- plot(cars) -->
+<!-- ``` -->
+
+<!-- Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*. -->
+
+<!-- When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file). -->
+
+Imputing of missing data is not a straight forward task, with a variety of packages with specific methods available in R (see Appendix A).[^1]
+
+Mark van der Loo, introduced the simputation package in CRAN&nbsp;[^2], along with a vignette.[^3]
+
+><div style="font-size: 14px;> Easy to use interfaces to a number of imputation methods (highlights):<ul><li>To define both imputation method and imputation model</li><li>For multiple variables at once</li><li>Grouping data by categorical variables</li></ul></div>
+
+I decided to try it out on UCI SkillCraft1 Master Table Dataset, which had a few missing values.[^4] [^5] The data is from participants who played StarCraft II&nbsp;[^6] a Real-Time Strategy (RTS) game.[^7]
+
+><div style="font-size: 14px;>From[5]....Using measures of cognitive-motor, attentional, and perceptual
+processing extracted from game data from 3360 Real-Time Strategy players at 7 different levels of expertise, we identified
+12 variables relevant to expertise.....</div>
+
+
+
+
+```{r}
+library(simputation)
+library(knitr)
+library(IRdisplay)
+```
+
+```{r}
+set.seed(1234)
+
+# Read Skill Craft csv, the missing values appeared as "?" in the dataset
+dataSK <- read.csv(file = "data/SkillCraft1_Dataset.csv", header = TRUE,  na.strings = c("?"))
+
+#GameID column can be disregarded
+dataSK <- dataSK[, !names(dataSK) %in% "GameID"]
+
+#Find the percentage of missing values
+percentageOfMissing <- function(x) {sum(is.na(x))/length(x)*100}
+
+apply(dataSK, 2, percentageOfMissing) # apply function on columns
+
+```
+
+Age, Hours Per week (Reported hours spent playing per week) and Total Hours (Reported total hours spent playing) are the three variables that have missing values, Total Hours having a slightly higher percentage.
+
+
+I eliminated the rows in the dataset that had "NA" in any columns.
+```{r}
+#Remove the rows that have NA in a column, to use
+#as the base to compare the accuracy
+dataSK_noNA <- na.omit(dataSK)
+
+summary(dataSK_noNA)
+```
+
+Age has a mean of 21.65, Hours Per Week 15.91 and Total Hours 960.4
+
+<br></br>
+
+####CART Model
+
+```{r}
+#Use the CART model(decision trees) to impute the missing values
+dataSK_cart <- impute_cart(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex)
+
+mean(dataSK_cart$Age); mean(dataSK_cart$HoursPerWeek); mean(dataSK_cart$TotalHours)
+```
+
+
+
+```{r}
+#Use the CART model(decision trees) to impute the missing values,
+#add_residual is set to observed
+dataSK_cart <- impute_cart(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "observed")
+
+mean(dataSK_cart$Age); mean(dataSK_cart$HoursPerWeek); mean(dataSK_cart$TotalHours)
+```
+
+
+```{r}
+#Use the CART model(decision trees) to impute the missing values,
+#add_residual is set to normal
+dataSK_cart <- impute_cart(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "normal")
+
+mean(dataSK_cart$Age);mean(dataSK_cart$HoursPerWeek); mean(dataSK_cart$TotalHours)
+```
+
+
+```{r}
+#Use the CART model(decision trees) to impute the missing values,
+#add_residual is set to observed and complexity parameter set to 1
+#for all predictor variables.
+#
+#Individual complexity parameter for each
+#predictor variables can be set using c(1, 2, 5), the order in the formula
+#dictates the use. Here Age will have a complexity parameter of 1, followed
+#by HoursPerWeek and TotalHours having a complexity parameter of 5
+dataSK_cart <- impute_cart(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "observed", 1)
+
+mean(dataSK_cart$Age); mean(dataSK_cart$HoursPerWeek); mean(dataSK_cart$TotalHours)
+```
+<br></br>
+
+####lm Model
+
+```{r}
+#Use the lm (linear regression) model to impute the missing values,
+#add_residual is set to observed
+dataSK_lm <- impute_lm(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "observed")
+
+mean(dataSK_lm$Age); mean(dataSK_lm$HoursPerWeek); mean(dataSK_lm$TotalHours)
+```
+
+```{r}
+#Use the lm (linear regression) model to impute the missing values,
+#add_residual is set to normal
+dataSK_lm <- impute_lm(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "normal")
+
+mean(dataSK_lm$Age); mean(dataSK_lm$HoursPerWeek); mean(dataSK_lm$TotalHours)
+```
+<br></br>
+
+####knn
+
+```{r}
+#Use the knn (k-nearest neighbor, based on gower's distance) donor pools
+#to impute the missing values. For each missing data pattern
+#a donor pool is created
+dataSK_knn <- impute_knn(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, pool = "multivariate", k = 25)
+
+mean(dataSK_knn$Age); mean(dataSK_knn$HoursPerWeek); mean(dataSK_knn$TotalHours)
+```
+
+
+```{r}
+#Use the knn (k-nearest neighbor, based on gower's distance)  donor pools
+#to impute the missing values. Records on the LHS of the formula that are
+#complete are used as donors
+dataSK_knn <- impute_knn(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, pool = "complete", k = 25)
+
+mean(dataSK_knn$Age); mean(dataSK_knn$HoursPerWeek); mean(dataSK_knn$TotalHours)
+```
+<br></br>
+
+####Random Forest Model
+
+```{r}
+#Use the rf (Random Forest) model to impute the missing values,
+#add_residual is set to normal, ntree set to 50
+dataSK_rf <- impute_rf(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "normal", ntree = 50)
+
+mean(dataSK_rf$Age); mean(dataSK_rf$HoursPerWeek); mean(dataSK_rf$TotalHours)
+```
+
+```{r}
+#Use the rf (Random Forest) model to impute the missing values,
+#add_residual is set to observed, ntree set to 50
+dataSK_rf <- impute_rf(dataSK, Age + HoursPerWeek + TotalHours ~ LeagueIndex, add_residual = "observed", ntree = 50)
+
+mean(dataSK_rf$Age); mean(dataSK_rf$HoursPerWeek); mean(dataSK_rf$TotalHours)
+```
+<br><br>
+
+####Summary
+
+
+
+
+
+
+
+
+
+
+
+
+<br></br>
+<br></br>
+<div style="width: 100%; padding-left: 150px; padding-right: 50px; marging: auto">
+<table style="width: 100%; color: black;">
+<caption align = "top" style="text-align: center; color: black; font-size: 18px;">Comparision of Imputing Accuracy (mean) </caption>
+<tr>
+<th></th>
+<th> Age </th>
+<th> Hours Per Week </th>
+<th> Total Hours </th>
+</tr>
+<tr>
+<td> Data set with NA removed </td>
+<td> 21.65 </td>
+<td> 15.91 </td>
+<td> 960.4 </td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr>
+<td style="word-wrap: break-word; width:40%;">Impute with CART Model</td>
+<td> 21.6385 </td>
+<td> 16.0034 </td>
+<td> 960.4218 </td>
+</tr>
+<tr>
+<td style="word-wrap: break-word; width:40%;">Impute with CART Model; add-residual set to observed </td>
+<td> 21.6348 </td>
+<td> 16.0033 </td>
+<td> 953.1119 </td>
+</tr>
+<tr>
+<td style="word-wrap: break-word; width:40%;">Impute with CART Model; add-residual set to normal</td>
+<td> 21.6318 </td>
+<td> 15.9917 </td>
+<td> 917.4514 </td>
+</tr>
+<tr>
+<td style="word-wrap: break-word; width:40%;">Impute with CART Model; add-residual set to observed; complexity parameter set to 1</td>
+<td> 21.6362 </td>
+<td> 15.9352 </td>
+<td> 954.1623 </td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr>
+<td style="word-wrap: break-word; width:40%;">Impute with lm Model; add-residual set to observed</td>
+<td> 21.6287 </td>
+<td> 16.0170 </td>
+<td> 973.6215 </td>
+</tr>
+<tr>
+<td style="word-wrap: break-word; width:40%;">Impute with lm Model; add-residual set to normal</td>
+<td> 21.6289 </td>
+<td> 16.0338 </td>
+<td> 999.1559 </td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<td style="word-wrap: break-word; width:40%;">Impute with knn; pool set to multivariate</td>
+<td> 21.6365 </td>
+<td> 16.0177 </td>
+<td> 963.5016 </td>
+</tr>
+<td style="word-wrap: break-word; width:40%;">Impute with knn; pool set to complete</td>
+<td> 21.6377 </td>
+<td> 16.0754 </td>
+<td> 965.0097 </td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<td style="word-wrap: break-word; width:40%;">Impute with Random Forest; add-residual set to normal; ntree set to 50</td>
+<td> 21.6440 </td>
+<td> 16.1801 </td>
+<td> 967.1309 </td>
+</tr>
+<td style="word-wrap: break-word; width:40%;">Impute with Random Forest; add-residual set to observed; ntree set to 50</td>
+<td> 21.6362 </td>
+<td> 16.1830 </td>
+<td> 961.7843 </td>
+</tr>
+</table>
+</div>
+<br></br>
+<br></br>
+
+###<i>Reference</i>
+[^1]: van Buuren, Stef (2012). Flexible Imputation of Missing Data. Chapman & Hall/CRC Press, Boca Raton, FL. 342 pages. ISBN 9781439868249.
+
+[^2]: Mark van der Loo. September 2016. Simputation (version 0.1.0). CRAN.  (https://cran.r-project.org/web/packages/simputation/index.html)
+
+[^3]: Mark van der Loo. September 2016. <i>Getting Started with simputation</i> (https://cran.r-project.org/web/packages/simputation/vignettes/intro.html)
+
+[^4]: http://archive.ics.uci.edu/ml/datasets/SkillCraft1+Master+Table+Dataset
+
+[^5]: Thompson JJ, Blair MR, Chen L, Henrey AJ (2013) Video Game Telemetry as a Critical Tool in the Study of Complex Skill Learning. PLoS ONE 8(9): e75129. http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0075129
+
+[^6]: StarCraft II. https://en.wikipedia.org/wiki/StarCraft
+
+[^7]: Real-time Strategy. https://en.wikipedia.org/wiki/Real-time_strategy
