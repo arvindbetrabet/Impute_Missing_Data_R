@@ -1,2 +1,3 @@
 *.Rmd linguist-language=R
 *.R linguist-language=R
+*.nb.html linguist-language=R
